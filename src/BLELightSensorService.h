@@ -183,9 +183,7 @@ public:
 
         BLE.setLocalName("LightSensor");
 
-        BLE.addService(wifiService);
-        BLE.addService(lightLevelService);
-        BLE.addService(settingsService);
+
         
         lightLevelService.addCharacteristic(lightLevelCharacteristic);
         lightLevelCharacteristic.writeValue("-1"); // Initial value
@@ -199,8 +197,12 @@ public:
         settingsService.addCharacteristic(sensorNameCharacteristic);
         sensorNameCharacteristic.writeValue(currentSettings.sensorName); // Initial value
 
-
+        BLE.addService(wifiService);
+        BLE.addService(lightLevelService);
+        BLE.addService(settingsService);
         BLE.setAdvertisedService(lightLevelService);
+        BLE.setAdvertisedService(wifiService);
+        BLE.setAdvertisedService(settingsService);
 
         
         BLE.advertise();
