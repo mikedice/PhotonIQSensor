@@ -7,7 +7,7 @@
 // Removed LightDisplay.h include
 #include "FileLogger.h"
 #include "BLELightSensorService.h"
-#include <ArduinoBLE.h>
+
 
 // Helper functions
 // Removed GetDisplayValues callback and related display code
@@ -61,7 +61,7 @@ void setup()
 void loop()
 {
   Serial.println("Looping...");
-  BLE.poll(500); // Poll BLE events
+  //BLE.poll(500); // Poll BLE events
   Serial.println("Polled BLE events");
 
   // Removed display update code from loop
