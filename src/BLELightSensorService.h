@@ -115,6 +115,36 @@ public:
         NimBLEDevice::getAdvertising()->start();
     }
 
+    void scanForPeers(){
+        Serial.println("Scanning for connected peers...");
+        std::vector<uint16_t> peerDevices = pServer->getPeerDevices();
+        Serial.print("Currently connected peers: "); Serial.println(peerDevices.size());
+
+        if (peerDevices.size() > 0){
+            for (uint16_t i = 0; i < peerDevices.size(); i++){
+                NimBLEConnInfo info = pServer->getPeerInfo(peerDevices[i]);
+                Serial.print("Peer ID: "); Serial.println(peerDevices[i]);
+                Serial.print(" Address: "); Serial.println(info.getAddress().toString().c_str());
+                Serial.print(" ID Address: "); Serial.println(info.getIdAddress().toString().c_str());
+                Serial.print(" Conn Handle: "); Serial.println(String(info.getConnHandle()).c_str());
+            }
+        }
+        else
+        {
+            Serial.println("No connected peers found.");
+            NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
+            if (!pAdvertising->isAdvertising()) {
+                Serial.println("No connected peers; restarting advertising.");
+                // In void begin() I am setting pServer->advertiseOnDisconnect(true); so advertising should automatically
+                // restart on disconnect. Theoretically this is redundant. Maybe can remove it later because it may
+                // never get called.
+                pAdvertising->start();
+            } else {
+                Serial.println("No connected peers; already advertising.");
+            }
+        }
+    }
+
     void begin() {
         gBleInstance = this;
         NimBLEDevice::init("LightSensor");
@@ -174,7 +204,7 @@ public:
         pAdvertising->addServiceUUID(UUID_SETTINGS_SERVICE);
         //pAdvertising->setScanResponse(true);
         pAdvertising->start();
-
+        pServer->advertiseOnDisconnect(true); // Takes care of dead connections such as when you stop the debugger on the IOS app in XCode :)
         Serial.println("NimBLE Light Sensor Service started & advertising.");
     }
 
@@ -183,7 +213,7 @@ public:
         pLightLevelChar->setValue(value.c_str());
         // Notify only if there are subscribed clients
 
-            Serial.print("Notifying light value: "); Serial.println(value);
+            // Serial.print("Notifying light value: "); Serial.println(value);
             pLightLevelChar->notify();
     
     }

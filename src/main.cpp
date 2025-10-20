@@ -22,11 +22,14 @@ RealtimeClock realtimeClock(wifiNetwork); // Create an instance of the RealtimeC
 
 LightSensor lightSensor; // Create an instance of the LightSensor class.
 
-// Removed LightDisplay instance
 
 FileLogger fileLogger(6); // Create my file system wrapper.
 
 BleLightSensorService bleLightSensorService; // Create an instance of the BLE Light Sensor Service.
+
+unsigned long lastPeerScan = 0;
+const unsigned long peerScanPeriod = 5000; // 5 seconds
+
 
 // Arduino Setup function
 void setup()
@@ -60,16 +63,16 @@ void setup()
 // Arduino Loop function
 void loop()
 {
-  Serial.println("Looping...");
-  //BLE.poll(500); // Poll BLE events
-  Serial.println("Polled BLE events");
+  // Run scanForPeers every 5 seconds
+  if (millis() - lastPeerScan >= peerScanPeriod) {
+    bleLightSensorService.scanForPeers();
+    lastPeerScan = millis();
+  }
 
-  // Removed display update code from loop
-
-  lightSensor.printLightLevel(); // Print light level to Serial Monitor
+  // lightSensor.printLightLevel(); // Print light level to Serial Monitor
   String lightValue = lightSensor.getLightAsString();
   bleLightSensorService.updateLightValue(lightValue); // Update BLE service with light value
-  Serial.println("updated light value over BLE");
+  // Serial.println("updated light value over BLE");
 }
 
 // Wait for a PC to connect to the Serial port
