@@ -3,8 +3,6 @@
 
 #include <NimBLEDevice.h>
 #include "Settings.h"
-// Wow this is a bigmess :)
-
 // This class migrates the original ArduinoBLE-based implementation to NimBLE-Arduino.
 // Key differences:
 //  - Uses NimBLEServer/NimBLEService/NimBLECharacteristic.
