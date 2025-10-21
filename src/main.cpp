@@ -14,8 +14,8 @@
 void waitForSerial(uint16_t timeout = 2000);
 
 // Wi-Fi Network
-char ssid[] = "a-shortfall-of-gravitas";
-char pass[] = "kona1234";
+char ssid[] = "";
+char pass[] = "";
 WifiNetwork wifiNetwork(ssid, pass);
 
 RealtimeClock realtimeClock(wifiNetwork); // Create an instance of the RealtimeClock class. Uses WifiNetwork to adjust clock if clock's power was lost.
