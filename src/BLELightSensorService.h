@@ -13,6 +13,13 @@
 class BleLightSensorService;
 static BleLightSensorService* gBleInstance = nullptr; // for static-style access inside callbacks.
 
+struct CharactersticWriteCallback {
+    const char* uuid;
+    void (*callback)(BleLightSensorService*, NimBLECharacteristic*);
+};
+
+
+
 class BleLightSensorService : public NimBLEServerCallbacks {
 public:
     // UUID constants (same values as previous implementation to maintain compatibility)
@@ -43,59 +50,91 @@ private:
     NimBLECharacteristic* pWifiPasswordChar      = nullptr;
     NimBLECharacteristic* pWifiEnabledChar       = nullptr;
 
+    // Write callback map for when characteristics are written to by the central
+    static constexpr size_t callbacksLen = 6;
+    CharactersticWriteCallback writeCallbacks[callbacksLen] = {
+        { UUID_SENSOR_NAME_CHAR, &BleLightSensorService::onWriteSensorName    },
+        { UUID_SCAN_INTERVAL_CHAR, &BleLightSensorService::onWriteScanInterval },
+        { UUID_WIFI_SSID_CHAR, &BleLightSensorService::onWriteWifiSSID         },
+        { UUID_WIFI_PASSWORD_CHAR, &BleLightSensorService::onWriteWifiPassword },
+        { UUID_WIFI_ENABLED_CHAR, &BleLightSensorService::onWriteWifiEnabled   },
+        { UUID_WIFI_SCAN_CMD_CHAR, &BleLightSensorService::onWriteWifiScanCmd  }
+    };  
+
+    static void onWriteSensorName(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        String newName = c->getValue().c_str();
+        Serial.print("Received new sensor name: "); Serial.println(newName);
+        if (bleSvcInst) bleSvcInst->saveSensorName(newName);
+    }
+
+    static void onWriteScanInterval(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        std::string value = c->getValue();
+        int interval = 0;
+        if(!value.empty()) interval = atoi(value.c_str());
+        Serial.print("Received new scan interval: "); Serial.println(interval);
+        if (bleSvcInst) bleSvcInst->saveScanInterval(interval);
+    }
+
+    static void onWriteWifiSSID(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        String ssid = c->getValue().c_str();
+        Serial.print("Received new WiFi SSID: "); Serial.println(ssid);
+        SettingsManager settings; settings.begin(); settings.loadSettings();
+        String pwd = bleSvcInst ? bleSvcInst->pWifiPasswordChar->getValue().c_str() : "";
+        settings.setWiFiCredentials(ssid, pwd); settings.end();
+        Serial.println("Wi-Fi SSID saved.");
+    }
+
+    static void onWriteWifiPassword(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        std::string value = c->getValue();
+        String pwd = value.c_str();
+        Serial.print("Received new WiFi Password: "); Serial.println(pwd);
+        SettingsManager settings; settings.begin(); settings.loadSettings();
+        String ssid = bleSvcInst ? bleSvcInst->pWifiSSIDChar->getValue().c_str() : "";
+        settings.setWiFiCredentials(ssid, pwd); settings.end();
+        Serial.println("Wi-Fi password saved.");
+    }
+
+    static void onWriteWifiEnabled(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        std::string value = c->getValue();
+        bool enabled = (!value.empty() && (value[0] == '1' || value[0] == 't' || value[0] == 'T'));
+        Serial.print("Received Wi-Fi Enabled state: "); Serial.println(enabled ? "Enabled" : "Disabled");
+        SettingsManager settings; settings.begin(); settings.loadSettings(); 
+        settings.setWifiEnabled(enabled); settings.end();
+        Serial.println("Wi-Fi enabled state saved.");
+    }
+
+    static void onWriteWifiScanCmd(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        std::string value = c->getValue();
+        bool doScan = (!value.empty() && (value[0] == '1'));
+        if(doScan && bleSvcInst) {
+            Serial.println("Start scanning for Wi-Fi SSIDs...");
+            int n = WiFi.scanNetworks();
+            Serial.println("Scan complete.");
+            String ssidList;
+            for(int i=0; i<n; i++) {
+                if(i>0) ssidList += ", ";
+                ssidList += WiFi.SSID(i);
+            }
+            bleSvcInst->pWifiSSIDsChar->setValue(ssidList.c_str());
+            bleSvcInst->pWifiSSIDsChar->notify();
+            c->setValue("0");
+            Serial.print("Found SSIDs: "); Serial.println(ssidList);
+        }
+    }
+
     // --- Callback classes ---
     class GenericWriteCallback : public NimBLECharacteristicCallbacks {
+
+        // Note: add your characteristic callbacks to the writeCallbacks array in BleLightSensorService
+        // if you want to handle more writable characteristics.
         void onWrite(NimBLECharacteristic* c) {
             if(!gBleInstance) return;
             const std::string uuid = c->getUUID().toString();
-            std::string value = c->getValue();
-
-            if(uuid == UUID_SENSOR_NAME_CHAR) {
-                String newName = value.c_str();
-                Serial.print("Received new sensor name: "); Serial.println(newName);
-                gBleInstance->saveSensorName(newName);
-            } else if(uuid == UUID_SCAN_INTERVAL_CHAR) {
-                int interval = 0;
-                if(!value.empty()) interval = atoi(value.c_str());
-                Serial.print("Received new scan interval: "); Serial.println(interval);
-                gBleInstance->saveScanInterval(interval);
-            } else if(uuid == UUID_WIFI_SSID_CHAR) {
-                String ssid = value.c_str();
-                Serial.print("Received new WiFi SSID: "); Serial.println(ssid);
-                SettingsManager settings; settings.begin(); settings.loadSettings();
-                String pwd = gBleInstance->pWifiPasswordChar->getValue().c_str();
-                settings.setWiFiCredentials(ssid, pwd); settings.end();
-                Serial.println("Wi-Fi SSID saved.");
-            } else if(uuid == UUID_WIFI_PASSWORD_CHAR) {
-                String pwd = value.c_str();
-                Serial.print("Received new WiFi Password: "); Serial.println(pwd);
-                SettingsManager settings; settings.begin(); settings.loadSettings();
-                String ssid = gBleInstance->pWifiSSIDChar->getValue().c_str();
-                settings.setWiFiCredentials(ssid, pwd); settings.end();
-                Serial.println("Wi-Fi password saved.");
-            } else if(uuid == UUID_WIFI_ENABLED_CHAR) {
-                bool enabled = (!value.empty() && (value[0] == '1' || value[0] == 't' || value[0] == 'T')); // simple parse
-                Serial.print("Received Wi-Fi Enabled state: "); Serial.println(enabled ? "Enabled" : "Disabled");
-                SettingsManager settings; settings.begin(); settings.loadSettings(); settings.setWifiEnabled(enabled); settings.end();
-                Serial.println("Wi-Fi enabled state saved.");
-            } else if(uuid == UUID_WIFI_SCAN_CMD_CHAR) {
-                // value of '1' indicates scan
-                bool doScan = (!value.empty() && (value[0] == '1'));
-                if(doScan) {
-                    Serial.println("Start scanning for Wi-Fi SSIDs...");
-                    int n = WiFi.scanNetworks();
-                    Serial.println("Scan complete.");
-                    String ssidList;
-                    for(int i=0;i<n;i++) {
-                        if(i>0) ssidList += ", ";
-                        ssidList += WiFi.SSID(i);
-                        // NimBLE uses its own task; no explicit poll required.
-                    }
-                    gBleInstance->pWifiSSIDsChar->setValue(ssidList.c_str());
-                    gBleInstance->pWifiSSIDsChar->notify();
-                    // reset command
-                    c->setValue("0");
-                    Serial.print("Found SSIDs: "); Serial.println(ssidList);
+            size_t callbacksLen = sizeof(gBleInstance->writeCallbacks)/sizeof(CharactersticWriteCallback);
+            for (size_t i = 0; i< callbacksLen; i++){
+                if (uuid == gBleInstance->writeCallbacks[i].uuid){
+                    gBleInstance->writeCallbacks[i].callback(gBleInstance, c);
+                    return;
                 }
             }
         }
@@ -223,6 +262,7 @@ public:
         SettingsManager settings; settings.begin(); settings.loadSettings(); settings.setSensorName(name); settings.end();
         Serial.println("Sensor name saved to settings.");
     }
+
     void saveScanInterval(int interval) {
         SettingsManager settings; settings.begin(); settings.loadSettings(); settings.setScanInterval(interval); settings.end();
         Serial.println("Scan interval saved to settings.");
