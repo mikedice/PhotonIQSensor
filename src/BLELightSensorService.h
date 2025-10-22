@@ -1,6 +1,7 @@
 #ifndef BLE_LIGHT_SENSOR_SERVICE_H
 #define BLE_LIGHT_SENSOR_SERVICE_H
 
+#include <algorithm>
 #include <NimBLEDevice.h>
 #include "Settings.h"
 // This class migrates the original ArduinoBLE-based implementation to NimBLE-Arduino.
@@ -104,8 +105,20 @@ private:
     }
 
     static void onWriteWifiScanCmd(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+        Serial.println("=== onWriteWifiScanCmd called ===");
         std::string value = c->getValue();
-        bool doScan = (!value.empty() && (value[0] == '1'));
+        Serial.print("Received value length: "); Serial.println(value.length());
+        
+        if (!value.empty()) {
+            Serial.print("First byte (decimal): "); Serial.println((int)value[0]);
+            Serial.print("First byte (hex): 0x"); Serial.println((int)value[0], HEX);
+        }
+        
+        // iOS sends a UInt8 with value 1 (not ASCII '1' which is 49)
+        bool doScan = (!value.empty() && (value[0] == 1 || value[0] == '1'));
+        Serial.print("doScan: "); Serial.println(doScan ? "true" : "false");
+        Serial.print("bleSvcInst: "); Serial.println(bleSvcInst ? "valid" : "NULL");
+        
         if(doScan && bleSvcInst) {
             Serial.println("Start scanning for Wi-Fi SSIDs...");
             int n = WiFi.scanNetworks();
@@ -117,7 +130,10 @@ private:
             }
             bleSvcInst->pWifiSSIDsChar->setValue(ssidList.c_str());
             bleSvcInst->pWifiSSIDsChar->notify();
-            c->setValue("0");
+            
+            // Reset to 0 (raw byte, not ASCII)
+            uint8_t zero = 0;
+            c->setValue(&zero, 1);
             Serial.print("Found SSIDs: "); Serial.println(ssidList);
         }
     }
@@ -127,16 +143,46 @@ private:
 
         // Note: add your characteristic callbacks to the writeCallbacks array in BleLightSensorService
         // if you want to handle more writable characteristics.
-        void onWrite(NimBLECharacteristic* c) {
-            if(!gBleInstance) return;
-            const std::string uuid = c->getUUID().toString();
+        
+        std::string toLower(const std::string& str) {
+            std::string result = str;
+            std::transform(result.begin(), result.end(), result.begin(), ::tolower);
+            return result;
+        }
+        
+        void onRead(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
+            Serial.println("GenericWriteCallback::onRead called");
+        }
+        
+        void onWrite(NimBLECharacteristic* c, NimBLEConnInfo& connInfo) override {
+            Serial.println("===== GenericWriteCallback::onWrite called =====");
+            if(!gBleInstance) {
+                Serial.println("ERROR: onWrite called but gBleInstance is null!");
+                return;
+            }
+            std::string uuid = toLower(c->getUUID().toString());
+            Serial.print("UUID: "); 
+            Serial.println(uuid.c_str());
+            
             size_t callbacksLen = sizeof(gBleInstance->writeCallbacks)/sizeof(CharactersticWriteCallback);
             for (size_t i = 0; i< callbacksLen; i++){
-                if (uuid == gBleInstance->writeCallbacks[i].uuid){
+                std::string storedUuid = toLower(gBleInstance->writeCallbacks[i].uuid);
+                
+                if (uuid == storedUuid){
+                    Serial.print("Found matching callback at index "); Serial.println(i);
                     gBleInstance->writeCallbacks[i].callback(gBleInstance, c);
                     return;
                 }
             }
+            Serial.println("WARNING: No matching callback found for this UUID");
+        }
+        
+        void onStatus(NimBLECharacteristic* c, int code) override {
+            Serial.print("GenericWriteCallback::onStatus called, code: "); Serial.println(code);
+        }
+        
+        void onSubscribe(NimBLECharacteristic* c, NimBLEConnInfo& connInfo, uint16_t subValue) override {
+            Serial.print("GenericWriteCallback::onSubscribe called, subValue: "); Serial.println(subValue);
         }
     };
 
@@ -147,10 +193,15 @@ public:
 
     // NimBLEServerCallbacks overrides
     void onConnect(NimBLEServer* pServer) {
-        Serial.println("Central connected.");
+        Serial.println("===================================");
+        Serial.println("Central CONNECTED!");
+        Serial.println("===================================");
     }
     void onDisconnect(NimBLEServer* pServer) {
-        Serial.println("Central disconnected; restarting advertising.");
+        Serial.println("===================================");
+        Serial.println("Central DISCONNECTED!");
+        Serial.println("===================================");
+        Serial.println("Restarting advertising...");
         NimBLEDevice::getAdvertising()->start();
     }
 
@@ -202,12 +253,16 @@ public:
         pLightLevelChar->setValue("-1");
 
         // --- WiFi Service ---
+        Serial.println("Creating WiFi Service...");
         pWifiService = pServer->createService(UUID_WIFI_SERVICE);
     pWifiSSIDsChar    = pWifiService->createCharacteristic(UUID_WIFI_SSIDS_CHAR,    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
     pWifiScanCmdChar  = pWifiService->createCharacteristic(UUID_WIFI_SCAN_CMD_CHAR, NIMBLE_PROPERTY::WRITE);
+        Serial.print("WiFi Scan CMD Char UUID: "); Serial.println(UUID_WIFI_SCAN_CMD_CHAR);
+        Serial.print("WiFi Scan CMD Char created at: "); Serial.println((unsigned long)pWifiScanCmdChar, HEX);
+        Serial.print("WiFi Scan CMD Char properties: "); Serial.println(pWifiScanCmdChar->getProperties());
         pWifiSSIDsChar->setValue("");
         pWifiScanCmdChar->setValue("0");
-        pWifiScanCmdChar->setCallbacks(&genericCallback);
+        Serial.print("WiFi Scan CMD initial value: "); Serial.println(pWifiScanCmdChar->getValue().c_str());
 
         // --- Settings Service ---
         pSettingsService = pServer->createService(UUID_SETTINGS_SERVICE);
@@ -224,17 +279,25 @@ public:
         pWifiPasswordChar->setValue(currentSettings.wifiPassword.c_str());
         pWifiEnabledChar->setValue(currentSettings.wifiEnabled ? "1" : "0");
 
-        // Attach callbacks to writable characteristics
+        // Start services
+        pLightService->start();
+        pWifiService->start();
+        pSettingsService->start();
+
+        // Attach callbacks to writable characteristics (AFTER services are started)
+        Serial.println("Setting callbacks...");
+        Serial.print("genericCallback address: "); Serial.println((unsigned long)&genericCallback, HEX);
+        
+        Serial.println("Setting WiFi Scan CMD callback...");
+        pWifiScanCmdChar->setCallbacks(&genericCallback);
+        Serial.print("  Callback object address: "); Serial.println((unsigned long)pWifiScanCmdChar->getCallbacks(), HEX);
+        
         pSensorNameChar->setCallbacks(&genericCallback);
         pScanIntervalChar->setCallbacks(&genericCallback);
         pWifiSSIDChar->setCallbacks(&genericCallback);
         pWifiPasswordChar->setCallbacks(&genericCallback);
         pWifiEnabledChar->setCallbacks(&genericCallback);
-
-        // Start services
-        pLightService->start();
-        pWifiService->start();
-        pSettingsService->start();
+        Serial.println("All callbacks set.");
 
         // Setup advertising
         NimBLEAdvertising* pAdvertising = NimBLEDevice::getAdvertising();
