@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <NimBLEDevice.h>
 #include "Settings.h"
+#include "WifiNetwork.h"
 // This class migrates the original ArduinoBLE-based implementation to NimBLE-Arduino.
 // Key differences:
 //  - Uses NimBLEServer/NimBLEService/NimBLECharacteristic.
@@ -22,42 +23,46 @@ struct CharactersticWriteCallback {
 
 
 class BleLightSensorService : public NimBLEServerCallbacks {
+private:
+    WifiNetwork* pWifiNetwork;
+
 public:
     // UUID constants (same values as previous implementation to maintain compatibility)
-    static constexpr const char* UUID_LIGHT_SERVICE              = "3d80c0aa-56b9-458f-82a1-12ce0310e076";
-    static constexpr const char* UUID_LIGHT_CHARACTERISTIC       = "646bd4e2-0927-45ac-bf41-fd9c69aa31dd";
-    static constexpr const char* UUID_WIFI_SERVICE               = "458800E6-FC10-46BD-8CDA-7F0F74BB1DBF";
-    static constexpr const char* UUID_WIFI_SSIDS_CHAR            = "B30041A1-23DF-473A-AEEC-0C8514514B03";
-    static constexpr const char* UUID_WIFI_SCAN_CMD_CHAR         = "5F8B1E42-1A56-4B5A-8026-8B15BC7EE5F3";
-    static constexpr const char* UUID_SETTINGS_SERVICE           = "C1D5A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
-    static constexpr const char* UUID_SENSOR_NAME_CHAR           = "D2C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
-    static constexpr const char* UUID_SCAN_INTERVAL_CHAR         = "E3F4B5C6-8D9E-4F0A-B1C2-D3E4F5A6B7C8";
-    static constexpr const char* UUID_WIFI_SSID_CHAR             = "B2C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
-    static constexpr const char* UUID_WIFI_PASSWORD_CHAR         = "C2C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
-    static constexpr const char* UUID_WIFI_ENABLED_CHAR          = "D3C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
+    static constexpr const char* UUID_LIGHT_SERVICE               = "3d80c0aa-56b9-458f-82a1-12ce0310e076";
+    static constexpr const char* UUID_LIGHT_CHARACTERISTIC        = "646bd4e2-0927-45ac-bf41-fd9c69aa31dd";
+    static constexpr const char* UUID_WIFI_SERVICE                = "458800E6-FC10-46BD-8CDA-7F0F74BB1DBF";
+    static constexpr const char* UUID_WIFI_SSIDS_CHAR             = "B30041A1-23DF-473A-AEEC-0C8514514B03";
+    static constexpr const char* UUID_WIFI_SCAN_CMD_CHAR          = "5F8B1E42-1A56-4B5A-8026-8B15BC7EE5F3";
+    static constexpr const char* UUID_WIFI_CONNECTED_SSID_CHAR    = "A1B2C3D4-E5F6-4789-ABCD-EF0123456789";
+    static constexpr const char* UUID_WIFI_CONNECTED_STATUS_CHAR  = "12345678-9ABC-DEF0-1234-56789ABCDEF0";
+    static constexpr const char* UUID_SETTINGS_SERVICE            = "C1D5A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
+    static constexpr const char* UUID_SENSOR_NAME_CHAR            = "D2C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
+    static constexpr const char* UUID_SCAN_INTERVAL_CHAR          = "E3F4B5C6-8D9E-4F0A-B1C2-D3E4F5A6B7C8";
+    static constexpr const char* UUID_WIFI_SSID_AND_PASSWORD_CHAR = "B2C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
+    static constexpr const char* UUID_WIFI_ENABLED_CHAR           = "D3C1A3B2-7E2F-4F4C-9F1D-3A2B1C0D4E5F";
 
 private:
-    NimBLEServer*        pServer             = nullptr;
-    NimBLEService*       pLightService       = nullptr;
-    NimBLEService*       pWifiService        = nullptr;
-    NimBLEService*       pSettingsService    = nullptr;
+    NimBLEServer*  pServer          = nullptr;
+    NimBLEService* pLightService    = nullptr;
+    NimBLEService* pWifiService     = nullptr;
+    NimBLEService* pSettingsService = nullptr;
 
-    NimBLECharacteristic* pLightLevelChar        = nullptr;
-    NimBLECharacteristic* pWifiSSIDsChar         = nullptr;
-    NimBLECharacteristic* pWifiScanCmdChar       = nullptr;
-    NimBLECharacteristic* pSensorNameChar        = nullptr;
-    NimBLECharacteristic* pScanIntervalChar      = nullptr;
-    NimBLECharacteristic* pWifiSSIDChar          = nullptr;
-    NimBLECharacteristic* pWifiPasswordChar      = nullptr;
-    NimBLECharacteristic* pWifiEnabledChar       = nullptr;
+    NimBLECharacteristic* pLightLevelChar          = nullptr;
+    NimBLECharacteristic* pWifiSSIDsChar           = nullptr;
+    NimBLECharacteristic* pWifiScanCmdChar         = nullptr;
+    NimBLECharacteristic* pWifiConnectedSSIDChar   = nullptr;
+    NimBLECharacteristic* pWifiConnectedStatusChar = nullptr;
+    NimBLECharacteristic* pSensorNameChar          = nullptr;
+    NimBLECharacteristic* pScanIntervalChar        = nullptr;
+    NimBLECharacteristic* pWifiSSIDCharAndPassword = nullptr;
+    NimBLECharacteristic* pWifiEnabledChar         = nullptr;
 
-    // Write callback map for when characteristics are written to by the central
+    // Write callback map for when characteristics are written to from the central
     static constexpr size_t callbacksLen = 6;
     CharactersticWriteCallback writeCallbacks[callbacksLen] = {
         { UUID_SENSOR_NAME_CHAR, &BleLightSensorService::onWriteSensorName    },
         { UUID_SCAN_INTERVAL_CHAR, &BleLightSensorService::onWriteScanInterval },
-        { UUID_WIFI_SSID_CHAR, &BleLightSensorService::onWriteWifiSSID         },
-        { UUID_WIFI_PASSWORD_CHAR, &BleLightSensorService::onWriteWifiPassword },
+        { UUID_WIFI_SSID_AND_PASSWORD_CHAR, &BleLightSensorService::onWriteWifiSSIDAndPassword },
         { UUID_WIFI_ENABLED_CHAR, &BleLightSensorService::onWriteWifiEnabled   },
         { UUID_WIFI_SCAN_CMD_CHAR, &BleLightSensorService::onWriteWifiScanCmd  }
     };  
@@ -76,23 +81,31 @@ private:
         if (bleSvcInst) bleSvcInst->saveScanInterval(interval);
     }
 
-    static void onWriteWifiSSID(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
+    static void onWriteWifiSSIDAndPassword(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
         String ssid = c->getValue().c_str();
-        Serial.print("Received new WiFi SSID: "); Serial.println(ssid);
+        Serial.print("Received new WiFi SSID and Password: "); Serial.println(ssid);
         SettingsManager settings; settings.begin(); settings.loadSettings();
-        String pwd = bleSvcInst ? bleSvcInst->pWifiPasswordChar->getValue().c_str() : "";
-        settings.setWiFiCredentials(ssid, pwd); settings.end();
-        Serial.println("Wi-Fi SSID saved.");
-    }
+        String wifiSSIDAndPassword = c->getValue().c_str();
+        settings.setWiFiCredentials(wifiSSIDAndPassword); settings.end();
+        Serial.println("Wi-Fi SSID and password saved to settings.");
 
-    static void onWriteWifiPassword(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
-        std::string value = c->getValue();
-        String pwd = value.c_str();
-        Serial.print("Received new WiFi Password: "); Serial.println(pwd);
-        SettingsManager settings; settings.begin(); settings.loadSettings();
-        String ssid = bleSvcInst ? bleSvcInst->pWifiSSIDChar->getValue().c_str() : "";
-        settings.setWiFiCredentials(ssid, pwd); settings.end();
-        Serial.println("Wi-Fi password saved.");
+        WifiCredentials creds = WifiNetwork::parseCredentials(wifiSSIDAndPassword);
+        bool result = bleSvcInst->pWifiNetwork->connect(creds);
+        if(result) {
+            Serial.println("Connected to new Wi-Fi network successfully.");
+            bleSvcInst->pWifiConnectedSSIDChar->setValue(creds.ssid.c_str());
+            bleSvcInst->pWifiConnectedSSIDChar->notify();
+            bleSvcInst->pWifiConnectedStatusChar->setValue("1");
+            bleSvcInst->pWifiConnectedStatusChar->notify();
+        } else {
+            Serial.println("Failed to connect to new Wi-Fi network.");
+            bleSvcInst->pWifiConnectedSSIDChar->setValue("");
+            bleSvcInst->pWifiConnectedSSIDChar->notify();
+            bleSvcInst->pWifiConnectedStatusChar->setValue("0");
+            bleSvcInst->pWifiConnectedStatusChar->notify();
+        }
+
+        settings.end();
     }
 
     static void onWriteWifiEnabled(BleLightSensorService* bleSvcInst, NimBLECharacteristic* c) {
@@ -130,7 +143,7 @@ private:
             }
             bleSvcInst->pWifiSSIDsChar->setValue(ssidList.c_str());
             bleSvcInst->pWifiSSIDsChar->notify();
-            
+            Serial.println("Notified SSID list characteristic.");
             // Reset to 0 (raw byte, not ASCII)
             uint8_t zero = 0;
             c->setValue(&zero, 1);
@@ -189,7 +202,11 @@ private:
     GenericWriteCallback genericCallback; // Single instance reused for all writable characteristics
 
 public:
-    BleLightSensorService() = default;
+    BleLightSensorService() : pWifiNetwork(nullptr) {}
+
+    void SetWifiNetwork(WifiNetwork* wifiNet) {
+        pWifiNetwork = wifiNet;
+    }
 
     // NimBLEServerCallbacks overrides
     void onConnect(NimBLEServer* pServer) {
@@ -217,6 +234,22 @@ public:
                 Serial.print(" Address: "); Serial.println(info.getAddress().toString().c_str());
                 Serial.print(" ID Address: "); Serial.println(info.getIdAddress().toString().c_str());
                 Serial.print(" Conn Handle: "); Serial.println(String(info.getConnHandle()).c_str());
+                String ssid = pWifiNetwork->getSSID();
+                if (ssid.length() > 0){
+                    Serial.print("Currently connected to SSID: "); Serial.println(ssid);
+                    pWifiConnectedSSIDChar->setValue(ssid.c_str());
+                    pWifiConnectedSSIDChar->notify();
+                    pWifiConnectedStatusChar->setValue("1");
+                    pWifiConnectedStatusChar->notify();
+                }
+                else
+                {
+                    Serial.println("Not connected to any Wi-Fi network.");
+                    pWifiConnectedSSIDChar->setValue("");
+                    pWifiConnectedSSIDChar->notify();
+                    pWifiConnectedStatusChar->setValue("0");
+                    pWifiConnectedStatusChar->notify();
+                }
             }
         }
         else
@@ -249,34 +282,35 @@ public:
 
         // --- Light Level Service ---
         pLightService = pServer->createService(UUID_LIGHT_SERVICE);
-    pLightLevelChar = pLightService->createCharacteristic(UUID_LIGHT_CHARACTERISTIC, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+         pLightLevelChar = pLightService->createCharacteristic(UUID_LIGHT_CHARACTERISTIC, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
         pLightLevelChar->setValue("-1");
 
         // --- WiFi Service ---
         Serial.println("Creating WiFi Service...");
         pWifiService = pServer->createService(UUID_WIFI_SERVICE);
-    pWifiSSIDsChar    = pWifiService->createCharacteristic(UUID_WIFI_SSIDS_CHAR,    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
-    pWifiScanCmdChar  = pWifiService->createCharacteristic(UUID_WIFI_SCAN_CMD_CHAR, NIMBLE_PROPERTY::WRITE);
-        Serial.print("WiFi Scan CMD Char UUID: "); Serial.println(UUID_WIFI_SCAN_CMD_CHAR);
-        Serial.print("WiFi Scan CMD Char created at: "); Serial.println((unsigned long)pWifiScanCmdChar, HEX);
-        Serial.print("WiFi Scan CMD Char properties: "); Serial.println(pWifiScanCmdChar->getProperties());
+        pWifiSSIDsChar    = pWifiService->createCharacteristic(UUID_WIFI_SSIDS_CHAR,    NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+        pWifiScanCmdChar  = pWifiService->createCharacteristic(UUID_WIFI_SCAN_CMD_CHAR, NIMBLE_PROPERTY::WRITE);
+        pWifiConnectedSSIDChar   = pWifiService->createCharacteristic(UUID_WIFI_CONNECTED_SSID_CHAR,   NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+        pWifiConnectedStatusChar = pWifiService->createCharacteristic(UUID_WIFI_CONNECTED_STATUS_CHAR, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+
         pWifiSSIDsChar->setValue("");
         pWifiScanCmdChar->setValue("0");
-        Serial.print("WiFi Scan CMD initial value: "); Serial.println(pWifiScanCmdChar->getValue().c_str());
+        pWifiConnectedSSIDChar->setValue("");
+        pWifiConnectedStatusChar->setValue("0");
+
 
         // --- Settings Service ---
         pSettingsService = pServer->createService(UUID_SETTINGS_SERVICE);
-    pSensorNameChar   = pSettingsService->createCharacteristic(UUID_SENSOR_NAME_CHAR,  NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-    pScanIntervalChar = pSettingsService->createCharacteristic(UUID_SCAN_INTERVAL_CHAR, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-    pWifiSSIDChar     = pSettingsService->createCharacteristic(UUID_WIFI_SSID_CHAR,     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-    pWifiPasswordChar = pSettingsService->createCharacteristic(UUID_WIFI_PASSWORD_CHAR, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
-    pWifiEnabledChar  = pSettingsService->createCharacteristic(UUID_WIFI_ENABLED_CHAR,  NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+        pSensorNameChar   = pSettingsService->createCharacteristic(UUID_SENSOR_NAME_CHAR,  NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+        pScanIntervalChar = pSettingsService->createCharacteristic(UUID_SCAN_INTERVAL_CHAR, NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+
+        pWifiSSIDCharAndPassword = pSettingsService->createCharacteristic(UUID_WIFI_SSID_AND_PASSWORD_CHAR,     NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
+        pWifiEnabledChar  = pSettingsService->createCharacteristic(UUID_WIFI_ENABLED_CHAR,  NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::WRITE | NIMBLE_PROPERTY::NOTIFY);
 
         // Initial values
         pSensorNameChar->setValue(currentSettings.sensorName.c_str());
         pScanIntervalChar->setValue(String(currentSettings.updateInterval).c_str());
-        pWifiSSIDChar->setValue(currentSettings.wifiSSID.c_str());
-        pWifiPasswordChar->setValue(currentSettings.wifiPassword.c_str());
+        pWifiSSIDCharAndPassword->setValue(currentSettings.pWifiSSIDCharAndPassword.c_str());
         pWifiEnabledChar->setValue(currentSettings.wifiEnabled ? "1" : "0");
 
         // Start services
@@ -294,8 +328,7 @@ public:
         
         pSensorNameChar->setCallbacks(&genericCallback);
         pScanIntervalChar->setCallbacks(&genericCallback);
-        pWifiSSIDChar->setCallbacks(&genericCallback);
-        pWifiPasswordChar->setCallbacks(&genericCallback);
+        pWifiSSIDCharAndPassword->setCallbacks(&genericCallback);
         pWifiEnabledChar->setCallbacks(&genericCallback);
         Serial.println("All callbacks set.");
 

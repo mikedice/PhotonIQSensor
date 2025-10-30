@@ -4,18 +4,21 @@
 #include <Arduino.h>
 #include <WiFi.h>
 
+struct WifiCredentials {
+    String ssid;
+    String password;
+};
+
 class WifiNetwork {
 public:
-    WifiNetwork(const char* ssid_, const char* password_) {
-        ssid = ssid_;
-        password = password_;
+    WifiNetwork() {
     }
 
-    void connect() {
+    bool connect(WifiCredentials creds) {
         Serial.print("Connecting to Wi-Fi on ");
-        Serial.print(ssid);
+        Serial.print(creds.ssid);
         Serial.print(" ...");
-        WiFi.begin(ssid, password);
+        WiFi.begin(creds.ssid, creds.password);
         int attempts = 0;
         while (WiFi.status() != WL_CONNECTED && attempts < 20) {
             delay(CONNECT_WAIT_DELAY);
@@ -24,9 +27,16 @@ public:
         }
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("\nConnected!");
+            return true;
         } else {
             Serial.println("\nFailed to connect.");
+            return false;
         }
+    }
+
+    void connect(const char* ssid_, const char* password_) {
+        WifiCredentials creds = {String(ssid_), String(password_)};
+        connect(creds);
     }
 
     bool isConnected() {
@@ -61,6 +71,13 @@ public:
     void printBSSID() {
         Serial.print("BSSID: ");
         Serial.println(WiFi.BSSIDstr());
+    }
+
+    String getSSID(){
+        if (isConnected()){
+            return WiFi.SSID();
+        }
+        return String("");
     }
 
     void printEncryptionType() {
@@ -110,9 +127,20 @@ public:
         printEncryptionType();
     }
 
+    static WifiCredentials parseCredentials(const String& ssidAndPassword) {
+        WifiCredentials creds;
+        int separatorIndex = ssidAndPassword.indexOf(',');
+        if (separatorIndex != -1) {
+            creds.ssid = ssidAndPassword.substring(0, separatorIndex);
+            creds.password = ssidAndPassword.substring(separatorIndex + 1);
+        } else {
+            creds.ssid = "";
+            creds.password = "";
+        }
+        return creds;
+    }
+
 private:
-    const char* ssid;
-    const char* password;
     static const int CONNECT_WAIT_DELAY = 1000;
 };
 

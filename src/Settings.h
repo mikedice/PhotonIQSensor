@@ -7,8 +7,7 @@
 struct SensorSettings {
     String sensorName;
     int updateInterval;
-    String wifiSSID;
-    String wifiPassword;
+    String pWifiSSIDCharAndPassword;
     bool wifiEnabled;
 };
 
@@ -20,8 +19,7 @@ public:
         settings.sensorName = "PhotonIQSensor";
         settings.updateInterval = 60; // Default to 60 seconds
         settings.wifiEnabled = false;
-        settings.wifiSSID = "";
-        settings.wifiPassword = "";
+        settings.pWifiSSIDCharAndPassword = "";
     }
 
     void begin()
@@ -39,6 +37,7 @@ public:
         settings.sensorName = preferences.getString("sensorName", "PhotonIQSensor");
         settings.updateInterval = preferences.getInt("updateInterval", 60);
         settings.wifiEnabled = preferences.getBool("wifiEnabled", true);
+        settings.pWifiSSIDCharAndPassword = preferences.getString("wifiSSIDAndPassword", "");
     }
 
     void saveSettings()
@@ -46,6 +45,7 @@ public:
         preferences.putString("sensorName", settings.sensorName);
         preferences.putInt("updateInterval", settings.updateInterval);
         preferences.putBool("wifiEnabled", settings.wifiEnabled);
+        preferences.putString("wifiSSIDAndPassword", settings.pWifiSSIDCharAndPassword);
     }
 
     void setSensorName(const String &name)
@@ -60,11 +60,9 @@ public:
         saveSettings();
     }
 
-    void setWiFiCredentials(const String &ssid, const String &password)
+    void setWiFiCredentials(const String &wifiSSIDAndPassword)
     {
-        // For simplicity, we just enable or disable Wi-Fi based on whether SSID is empty
-        settings.wifiSSID = ssid;
-        settings.wifiPassword = password;
+        settings.pWifiSSIDCharAndPassword = wifiSSIDAndPassword;
         saveSettings();
     }
 
@@ -72,6 +70,11 @@ public:
     {
         settings.wifiEnabled = enabled;
         saveSettings();
+    }
+
+    WifiCredentials getWifiCredentials()
+    {
+        return WifiNetwork::parseCredentials(settings.pWifiSSIDCharAndPassword);
     }
 
     SensorSettings getSettings()

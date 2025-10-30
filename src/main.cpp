@@ -7,21 +7,20 @@
 // Removed LightDisplay.h include
 #include "FileLogger.h"
 #include "BLELightSensorService.h"
+#include "Settings.h"
 
 
 // Helper functions
 // Removed GetDisplayValues callback and related display code
 void waitForSerial(uint16_t timeout = 2000);
 
-// Wi-Fi Network
-char ssid[] = "";
-char pass[] = "";
-WifiNetwork wifiNetwork(ssid, pass);
+SettingsManager settingsManager;
+
+WifiNetwork wifiNetwork; // Create an instance of the WifiNetwork class.
 
 RealtimeClock realtimeClock(wifiNetwork); // Create an instance of the RealtimeClock class. Uses WifiNetwork to adjust clock if clock's power was lost.
 
 LightSensor lightSensor; // Create an instance of the LightSensor class.
-
 
 FileLogger fileLogger(6); // Create my file system wrapper.
 
@@ -30,6 +29,7 @@ BleLightSensorService bleLightSensorService; // Create an instance of the BLE Li
 unsigned long lastPeerScan = 0;
 const unsigned long peerScanPeriod = 5000; // 5 seconds
 
+WifiCredentials loadWifiCredentialsFromSettings();
 
 // Arduino Setup function
 void setup()
@@ -38,7 +38,8 @@ void setup()
   waitForSerial();
 
   // Initialize Wi-Fi
-  wifiNetwork.connect();
+  WifiCredentials wifiCreds = loadWifiCredentialsFromSettings();
+  wifiNetwork.connect(wifiCreds);
   wifiNetwork.printNetworkDetails();
 
   // Initialize RTC
@@ -53,7 +54,7 @@ void setup()
   // Removed e-Paper display initialization
 
   Serial.println("BLE Initiailization...");
-
+  bleLightSensorService.SetWifiNetwork(&wifiNetwork);
   bleLightSensorService.begin(); // Initialize BLE Light Sensor Service
 
   // Removed initial display update code
@@ -74,6 +75,17 @@ void loop()
   bleLightSensorService.updateLightValue(lightValue); // Update BLE service with light value
   // Serial.println("updated light value over BLE");
 }
+
+WifiCredentials loadWifiCredentialsFromSettings()
+{
+    WifiCredentials creds;
+    settingsManager.begin();
+    settingsManager.loadSettings();
+    creds = settingsManager.getWifiCredentials();
+    settingsManager.end();
+    return creds;
+}
+
 
 // Wait for a PC to connect to the Serial port
 void waitForSerial(uint16_t timeout)
